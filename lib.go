@@ -14,27 +14,41 @@ type EnvVar struct {
 }
 
 type Doc struct {
-	Comments yaml.CommentMap
-	EnvVars  []EnvVar
+	path     string
+	comments yaml.CommentMap
+	envVars  []EnvVar
 }
 
-func Parse(path string) (Doc, error) {
+func Read(path string) (Doc, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return Doc{}, fmt.Errorf("open file (%s): %v", path, err)
 	}
 	doc := Doc{
-		Comments: make(yaml.CommentMap),
-		EnvVars:  make([]EnvVar, 0),
+		path:     path,
+		comments: make(yaml.CommentMap),
+		envVars:  make([]EnvVar, 0),
 	}
 	decoder := yaml.NewDecoder(
 		file,
 		yaml.DisallowUnknownField(),
-		yaml.CommentToMap(doc.Comments),
+		yaml.CommentToMap(doc.comments),
 	)
-	err = decoder.Decode(&doc.EnvVars)
+	err = decoder.Decode(&doc.envVars)
 	if err != nil {
 		return Doc{}, fmt.Errorf("parse YAML: %v", err)
 	}
 	return doc, nil
 }
+
+// func (doc Doc) Write() error {
+// 	file, err := os.Create(doc.path)
+// 	if err != nil {
+// 		return fmt.Errorf("open file (%s) for write: %v", doc.path, err)
+// 	}
+// 	encoder := yaml.NewEncoder(
+// 		file,
+// 		yaml.WithComment(doc.comments),
+// 		yaml.Indent(2),
+// 	)
+// }
