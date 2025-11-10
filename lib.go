@@ -37,6 +37,31 @@ func Read(path string) (Doc, error) {
 	return doc, nil
 }
 
+func (doc Doc) Encrypt() error {
+	rootNode := doc.tree.Docs[0].Body
+	varsNode, ok := rootNode.(*ast.SequenceNode)
+	if !ok {
+		return fmt.Errorf("expected list of env vars, got %T", rootNode)
+	}
+	for _, entry := range varsNode.Entries {
+		mapNode, ok := entry.Value.(*ast.MappingNode)
+		if !ok {
+			return fmt.Errorf("expected map, got %T", rootNode)
+		}
+		for _, item := range mapNode.Values {
+			key := item.Key.String()
+			switch key {
+			case "encrypted", "plain":
+			case "encrypt":
+				// ...
+			default:
+				return fmt.Errorf("invalid key: %s", key)
+			}
+		}
+	}
+	return nil
+}
+
 func (doc Doc) Write() error {
 	raw, err := io.ReadAll(doc.tree)
 	if err != nil {
