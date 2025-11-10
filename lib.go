@@ -1,54 +1,50 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 
-	"github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml/ast"
+	"github.com/goccy/go-yaml/parser"
 )
 
-type EnvVar struct {
-	Encrypted string `yaml:"encrypted"`
-	Encrypt   string `yaml:"encrypt"`
-	Plain     string `yaml:"plain"`
-}
-
 type Doc struct {
-	path     string
-	comments yaml.CommentMap
-	envVars  []EnvVar
+	path string
+	tree *ast.File
 }
 
 func Read(path string) (Doc, error) {
-	file, err := os.Open(path)
+	file, err := os.ReadFile(path)
 	if err != nil {
-		return Doc{}, fmt.Errorf("open file (%s): %v", path, err)
+		return Doc{}, fmt.Errorf("read file: %v", err)
+	}
+	tree, err := parser.ParseBytes(file, parser.ParseComments)
+	if err != nil {
+		return Doc{}, fmt.Errorf("parse file: %v", err)
+	}
+	if len(tree.Docs) == 0 {
+		return Doc{}, errors.New("empty file")
+	}
+	if len(tree.Docs) > 1 {
+		return Doc{}, fmt.Errorf("expected one YAML doc in a file, go %d", len(tree.Docs))
 	}
 	doc := Doc{
-		path:     path,
-		comments: make(yaml.CommentMap),
-		envVars:  make([]EnvVar, 0),
-	}
-	decoder := yaml.NewDecoder(
-		file,
-		yaml.DisallowUnknownField(),
-		yaml.CommentToMap(doc.comments),
-	)
-	err = decoder.Decode(&doc.envVars)
-	if err != nil {
-		return Doc{}, fmt.Errorf("parse YAML: %v", err)
+		path: path,
+		tree: tree,
 	}
 	return doc, nil
 }
 
-// func (doc Doc) Write() error {
-// 	file, err := os.Create(doc.path)
-// 	if err != nil {
-// 		return fmt.Errorf("open file (%s) for write: %v", doc.path, err)
-// 	}
-// 	encoder := yaml.NewEncoder(
-// 		file,
-// 		yaml.WithComment(doc.comments),
-// 		yaml.Indent(2),
-// 	)
-// }
+func (doc Doc) Write() error {
+	raw, err := io.ReadAll(doc.tree)
+	if err != nil {
+		return fmt.Errorf("serialize YAML: %v", err)
+	}
+	err = os.WriteFile(doc.path, raw, 0o666)
+	if err != nil {
+		return fmt.Errorf("write file: %v", err)
+	}
+	return nil
+}
