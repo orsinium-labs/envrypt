@@ -32,7 +32,7 @@ func (cmd Encrypt) run() error {
 	if err != nil {
 		return fmt.Errorf("read %s: %v", cmd.input, err)
 	}
-	err = doc.Encrypt()
+	err = doc.Encrypt(cmd.password)
 	if err != nil {
 		return fmt.Errorf("encrypt %s: %v", cmd.input, err)
 	}

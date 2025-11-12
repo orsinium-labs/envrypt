@@ -1,11 +1,13 @@
 package src
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/ProtonMail/gopenpgp/v2/crypto"
 	"github.com/goccy/go-yaml/ast"
 	"github.com/goccy/go-yaml/parser"
 )
@@ -37,7 +39,7 @@ func Read(path string) (Doc, error) {
 	return doc, nil
 }
 
-func (doc Doc) Encrypt() error {
+func (doc Doc) Encrypt(password string) error {
 	rootNode := doc.tree.Docs[0].Body
 	varsNode, ok := rootNode.(*ast.SequenceNode)
 	if !ok {
@@ -53,7 +55,16 @@ func (doc Doc) Encrypt() error {
 			switch key {
 			case "encrypted", "plain":
 			case "encrypt":
-				// ...
+				value, _ := io.ReadAll(item.Value)
+				plain := crypto.NewPlainMessage(value)
+				encBin, err := crypto.EncryptMessageWithPassword(plain, []byte(password))
+				if err != nil {
+					return fmt.Errorf("encrypt field: %v", err)
+				}
+				encStr := base64.StdEncoding.EncodeToString(encBin.Data)
+				token := item.Value.GetToken()
+				token.Value = encStr
+				item.Replace(ast.String(token))
 			default:
 				return fmt.Errorf("invalid key: %s", key)
 			}
