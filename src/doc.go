@@ -55,6 +55,10 @@ func (doc Doc) Encrypt(password string) error {
 			switch key {
 			case "encrypted", "plain":
 			case "encrypt":
+				_, isStr := item.Value.(*ast.StringNode)
+				if !isStr {
+					return fmt.Errorf("encrypt value: expected string, got %T", item.Value)
+				}
 				value, _ := io.ReadAll(item.Value)
 				plain := crypto.NewPlainMessage(value)
 				encBin, err := crypto.EncryptMessageWithPassword(plain, []byte(password))
@@ -62,9 +66,14 @@ func (doc Doc) Encrypt(password string) error {
 					return fmt.Errorf("encrypt field: %v", err)
 				}
 				encStr := base64.StdEncoding.EncodeToString(encBin.Data)
-				token := item.Value.GetToken()
-				token.Value = encStr
-				item.Replace(ast.String(token))
+
+				keyToken := item.Key.GetToken()
+				keyToken.Value = "encrypted"
+				item.Key = ast.String(keyToken)
+
+				valToken := item.Value.GetToken()
+				valToken.Value = encStr
+				item.Value = ast.String(valToken)
 			default:
 				return fmt.Errorf("invalid key: %s", key)
 			}
