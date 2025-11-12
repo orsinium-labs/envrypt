@@ -18,6 +18,7 @@ func command(cfg Config) *cobra.Command {
 	}
 	root.AddCommand(Version{cfg: cfg}.Command())
 	root.AddCommand(Encrypt{cfg: cfg}.Command())
+	root.AddCommand(Decrypt{cfg: cfg}.Command())
 	return root
 }
 
