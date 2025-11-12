@@ -12,6 +12,11 @@ import (
 	"github.com/goccy/go-yaml/parser"
 )
 
+type EnvVar struct {
+	Key   string
+	Value string
+}
+
 type Doc struct {
 	path string
 	tree *ast.File
@@ -41,24 +46,24 @@ func Read(path string) (Doc, error) {
 
 func (doc Doc) Encrypt(password string) error {
 	rootNode := doc.tree.Docs[0].Body
-	varsNode, ok := rootNode.(*ast.SequenceNode)
+	varsNode, ok := rootNode.(*ast.MappingNode)
 	if !ok {
-		return fmt.Errorf("expected list of env vars, got %T", rootNode)
+		return fmt.Errorf("expected map of env vars, got %T", rootNode)
 	}
-	for _, entry := range varsNode.Entries {
+	for _, entry := range varsNode.Values {
 		mapNode, ok := entry.Value.(*ast.MappingNode)
 		if !ok {
 			return fmt.Errorf("expected map, got %T", rootNode)
 		}
 		for _, item := range mapNode.Values {
+			_, isStr := item.Value.(*ast.StringNode)
+			if !isStr {
+				return fmt.Errorf("value must be string, got %T", item.Value)
+			}
 			key := item.Key.String()
 			switch key {
 			case "encrypted", "plain":
 			case "encrypt":
-				_, isStr := item.Value.(*ast.StringNode)
-				if !isStr {
-					return fmt.Errorf("encrypt value: expected string, got %T", item.Value)
-				}
 				value, _ := io.ReadAll(item.Value)
 				plain := crypto.NewPlainMessage(value)
 				encBin, err := crypto.EncryptMessageWithPassword(plain, []byte(password))
@@ -80,6 +85,52 @@ func (doc Doc) Encrypt(password string) error {
 		}
 	}
 	return nil
+}
+
+func (doc Doc) Decrypt(password string) ([]EnvVar, error) {
+	rootNode := doc.tree.Docs[0].Body
+	varsNode, ok := rootNode.(*ast.MappingNode)
+	if !ok {
+		return nil, fmt.Errorf("expected list of env vars, got %T", rootNode)
+	}
+	vars := make([]EnvVar, 0)
+	for _, entry := range varsNode.Values {
+		mapNode, ok := entry.Value.(*ast.MappingNode)
+		if !ok {
+			return nil, fmt.Errorf("expected map, got %T", rootNode)
+		}
+		for _, item := range mapNode.Values {
+			_, isStr := item.Value.(*ast.StringNode)
+			if !isStr {
+				return nil, fmt.Errorf("value must be string, got %T", item.Value)
+			}
+			key := item.Key.String()
+			switch key {
+			case "encrypted":
+				encryptedBin, err := base64.StdEncoding.DecodeString(item.Value.String())
+				if err != nil {
+					return nil, fmt.Errorf("decode base64: %v", err)
+				}
+				encryptedMsg := crypto.NewPGPMessage(encryptedBin)
+				decBin, err := crypto.DecryptMessageWithPassword(encryptedMsg, []byte(password))
+				if err != nil {
+					return nil, fmt.Errorf("decrypt field: %v", err)
+				}
+				vars = append(vars, EnvVar{
+					Key:   entry.Key.String(),
+					Value: decBin.GetString(),
+				})
+			case "encrypt", "plain":
+				vars = append(vars, EnvVar{
+					Key:   entry.Key.String(),
+					Value: item.Value.String(),
+				})
+			default:
+				return nil, fmt.Errorf("invalid key: %s", key)
+			}
+		}
+	}
+	return vars, nil
 }
 
 func (doc Doc) Write() error {
