@@ -17,6 +17,7 @@ func command(cfg Config) *cobra.Command {
 		SilenceUsage: true, // do not print usage when a command returns an error
 	}
 	root.AddCommand(Version{cfg: cfg}.Command())
+	root.AddCommand(Encrypt{cfg: cfg}.Command())
 	return root
 }
 
@@ -31,5 +32,11 @@ func Entrypoint() {
 	err := Main(os.Args[1:], os.Stdin, os.Stdout)
 	if err != nil {
 		os.Exit(1)
+	}
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
 	}
 }

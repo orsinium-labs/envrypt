@@ -67,6 +67,7 @@ func (doc Doc) Write() error {
 	if err != nil {
 		return fmt.Errorf("serialize YAML: %v", err)
 	}
+	raw = append(raw, '\n')
 	err = os.WriteFile(doc.path, raw, 0o666)
 	if err != nil {
 		return fmt.Errorf("write file: %v", err)
