@@ -100,46 +100,89 @@ func (doc Doc) Decrypt(password string) ([]EnvVar, error) {
 	rootNode := doc.tree.Docs[0].Body
 	varsNode, ok := rootNode.(*ast.MappingNode)
 	if !ok {
-		return nil, fmt.Errorf("expected list of env vars, got %T", rootNode)
+		return nil, fmt.Errorf("expected list of env vars, got %v", rootNode.Type())
 	}
 	vars := make([]EnvVar, 0)
 	for _, entry := range varsNode.Values {
-		mapNode, ok := entry.Value.(*ast.MappingNode)
-		if !ok {
-			return nil, fmt.Errorf("expected map, got %T", rootNode)
+		envVar, err := doc.decryptEnvVar(entry, password)
+		if err != nil {
+			name := entry.Key.String()
+			return nil, fmt.Errorf("decrypt %s: %v", name, err)
 		}
-		for _, item := range mapNode.Values {
-			_, isStr := item.Value.(*ast.StringNode)
-			if !isStr {
-				return nil, fmt.Errorf("value must be string, got %T", item.Value)
-			}
-			key := item.Key.String()
-			switch key {
-			case "encrypted":
-				encryptedBin, err := base64.StdEncoding.DecodeString(item.Value.String())
-				if err != nil {
-					return nil, fmt.Errorf("decode base64: %v", err)
-				}
-				encryptedMsg := crypto.NewPGPMessage(encryptedBin)
-				decBin, err := crypto.DecryptMessageWithPassword(encryptedMsg, []byte(password))
-				if err != nil {
-					return nil, fmt.Errorf("decrypt field: %v", err)
-				}
-				vars = append(vars, EnvVar{
-					Key:   entry.Key.String(),
-					Value: decBin.GetString(),
-				})
-			case "encrypt", "plain":
-				vars = append(vars, EnvVar{
-					Key:   entry.Key.String(),
-					Value: item.Value.String(),
-				})
-			default:
-				return nil, fmt.Errorf("invalid key: %s", key)
-			}
-		}
+		vars = append(vars, envVar)
 	}
 	return vars, nil
+}
+
+func (doc Doc) decryptEnvVar(entry *ast.MappingValueNode, password string) (EnvVar, error) {
+	mapNode, isMap := entry.Value.(*ast.MappingNode)
+	if !isMap {
+		return EnvVar{}, fmt.Errorf("expected map, got %v", mapNode.Type())
+	}
+
+	// Parse node key (env var name).
+	keyNode, isStr := entry.Key.(*ast.StringNode)
+	if !isStr {
+		return EnvVar{}, fmt.Errorf("key must be string, got %v", entry.Key.Type())
+	}
+	keyStr := keyNode.Value
+
+	// Get the mapping of the env var value. One of:
+	//
+	//  - {"encrypt": "..."}
+	//  - {"encrypted": "..."}
+	//  - {"plain": "..."}
+	if len(mapNode.Values) == 0 {
+		return EnvVar{}, errors.New("map has no entries")
+	}
+	if len(mapNode.Values) > 1 {
+		return EnvVar{}, fmt.Errorf("expected one entry, found %d", len(mapNode.Values))
+	}
+	item := mapNode.Values[0]
+
+	// Extract (and decrypt if encrypted) the env var value.
+	value, err := doc.decryptEnvVarValue(item, password)
+	if err != nil {
+		return EnvVar{}, fmt.Errorf("decode value: %v", err)
+	}
+
+	envVar := EnvVar{
+		Key:   keyStr,
+		Value: value,
+	}
+	return envVar, nil
+}
+
+func (doc Doc) decryptEnvVarValue(item *ast.MappingValueNode, password string) (string, error) {
+	keyNode, isStr := item.Key.(*ast.StringNode)
+	if !isStr {
+		return "", fmt.Errorf("key must be string, got %v", item.Value.Type())
+	}
+	keyStr := keyNode.Value
+
+	valueNode, isStr := item.Value.(*ast.StringNode)
+	if !isStr {
+		return "", fmt.Errorf("value must be string, got %v", item.Value.Type())
+	}
+	valueStr := valueNode.Value
+
+	switch keyStr {
+	case "encrypted":
+		encryptedBin, err := base64.StdEncoding.DecodeString(valueStr)
+		if err != nil {
+			return "", fmt.Errorf("decode base64: %v", err)
+		}
+		encryptedMsg := crypto.NewPGPMessage(encryptedBin)
+		decBin, err := crypto.DecryptMessageWithPassword(encryptedMsg, []byte(password))
+		if err != nil {
+			return "", fmt.Errorf("decrypt field: %v", err)
+		}
+		return decBin.GetString(), nil
+	case "encrypt", "plain":
+		return valueStr, nil
+	default:
+		return "", fmt.Errorf("invalid key: %s", keyStr)
+	}
 }
 
 func (doc Doc) Write() error {
