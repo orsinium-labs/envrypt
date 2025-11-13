@@ -49,6 +49,9 @@ func (cmd Decrypt) run() error {
 		_ = out.Close()
 	}()
 	for _, envVar := range vars {
+		if envVar.Comment != "" {
+			fmt.Fprintln(out, envVar.Comment)
+		}
 		val, _ := json.Marshal(envVar.Value)
 		fmt.Fprintf(out, "export %s=%s\n", envVar.Key, string(val))
 	}

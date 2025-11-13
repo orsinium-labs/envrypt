@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/ProtonMail/gopenpgp/v2/crypto"
 	"github.com/goccy/go-yaml/ast"
@@ -13,8 +14,9 @@ import (
 )
 
 type EnvVar struct {
-	Key   string
-	Value string
+	Comment string
+	Key     string
+	Value   string
 }
 
 type Doc struct {
@@ -146,10 +148,26 @@ func (doc Doc) decryptEnvVar(entry *ast.MappingValueNode, password string) (EnvV
 	}
 
 	envVar := EnvVar{
-		Key:   keyStr,
-		Value: value,
+		Comment: doc.extractComment(entry),
+		Key:     keyStr,
+		Value:   value,
 	}
 	return envVar, nil
+}
+
+func (Doc) extractComment(entry *ast.MappingValueNode) string {
+	if entry.Comment == nil {
+		return ""
+	}
+	if entry.Comment.Comments == nil {
+		return ""
+	}
+	comments := entry.Comment.Comments
+	result := make([]string, 0, len(comments))
+	for _, comment := range comments {
+		result = append(result, comment.String())
+	}
+	return strings.Join(result, "\n")
 }
 
 func (doc Doc) decryptEnvVarValue(item *ast.MappingValueNode, password string) (string, error) {
