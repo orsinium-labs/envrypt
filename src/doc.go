@@ -48,40 +48,49 @@ func (doc Doc) Encrypt(password string) error {
 	rootNode := doc.tree.Docs[0].Body
 	varsNode, ok := rootNode.(*ast.MappingNode)
 	if !ok {
-		return fmt.Errorf("expected map of env vars, got %T", rootNode)
+		return fmt.Errorf("expected map of env vars, got %v", rootNode.Type())
 	}
 	for _, entry := range varsNode.Values {
-		mapNode, ok := entry.Value.(*ast.MappingNode)
-		if !ok {
-			return fmt.Errorf("expected map, got %T", rootNode)
+		err := doc.encryptNode(entry, password)
+		if err != nil {
+			name := entry.Key.String()
+			return fmt.Errorf("encrypt %s: %v", name, err)
 		}
-		for _, item := range mapNode.Values {
-			_, isStr := item.Value.(*ast.StringNode)
-			if !isStr {
-				return fmt.Errorf("value must be string, got %T", item.Value)
-			}
-			key := item.Key.String()
-			switch key {
-			case "encrypted", "plain":
-			case "encrypt":
-				value, _ := io.ReadAll(item.Value)
-				plain := crypto.NewPlainMessage(value)
-				encBin, err := crypto.EncryptMessageWithPassword(plain, []byte(password))
-				if err != nil {
-					return fmt.Errorf("encrypt field: %v", err)
-				}
-				encStr := base64.StdEncoding.EncodeToString(encBin.Data)
+	}
+	return nil
+}
 
-				keyToken := item.Key.GetToken()
-				keyToken.Value = "encrypted"
-				item.Key = ast.String(keyToken)
-
-				valToken := item.Value.GetToken()
-				valToken.Value = encStr
-				item.Value = ast.String(valToken)
-			default:
-				return fmt.Errorf("invalid key: %s", key)
+func (doc Doc) encryptNode(entry *ast.MappingValueNode, password string) error {
+	mapNode, ok := entry.Value.(*ast.MappingNode)
+	if !ok {
+		return fmt.Errorf("expected map, got %v", entry.Type())
+	}
+	for _, item := range mapNode.Values {
+		_, isStr := item.Value.(*ast.StringNode)
+		if !isStr {
+			return fmt.Errorf("value must be string, got %v", item.Value.Type())
+		}
+		key := item.Key.String()
+		switch key {
+		case "encrypted", "plain":
+		case "encrypt":
+			value, _ := io.ReadAll(item.Value)
+			plain := crypto.NewPlainMessage(value)
+			encBin, err := crypto.EncryptMessageWithPassword(plain, []byte(password))
+			if err != nil {
+				return fmt.Errorf("encrypt field: %v", err)
 			}
+			encStr := base64.StdEncoding.EncodeToString(encBin.Data)
+
+			keyToken := item.Key.GetToken()
+			keyToken.Value = "encrypted"
+			item.Key = ast.String(keyToken)
+
+			valToken := item.Value.GetToken()
+			valToken.Value = encStr
+			item.Value = ast.String(valToken)
+		default:
+			return fmt.Errorf("invalid key: %s", key)
 		}
 	}
 	return nil
