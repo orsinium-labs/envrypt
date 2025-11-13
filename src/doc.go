@@ -47,6 +47,12 @@ func Read(path string) (Doc, error) {
 }
 
 func (doc Doc) Encrypt(password string) error {
+	if password == "" {
+		return errors.New("password is empty")
+	}
+	if len(password) < 8 {
+		return errors.New("password is too short")
+	}
 	rootNode := doc.tree.Docs[0].Body
 	varsNode, ok := rootNode.(*ast.MappingNode)
 	if !ok {
@@ -98,6 +104,12 @@ func (doc Doc) encryptNode(entry *ast.MappingValueNode, password string) error {
 }
 
 func (doc Doc) Decrypt(password string) ([]EnvVar, error) {
+	if password == "" {
+		return nil, errors.New("password is empty")
+	}
+	if len(password) < 8 {
+		return nil, errors.New("password is too short")
+	}
 	rootNode := doc.tree.Docs[0].Body
 	varsNode, ok := rootNode.(*ast.MappingNode)
 	if !ok {
