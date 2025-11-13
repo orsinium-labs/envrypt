@@ -66,7 +66,7 @@ func (doc Doc) encryptNode(entry *ast.MappingValueNode, password string) error {
 		return fmt.Errorf("expected map, got %v", entry.Type())
 	}
 	for _, item := range mapNode.Values {
-		_, isStr := item.Value.(*ast.StringNode)
+		valueNode, isStr := item.Value.(*ast.StringNode)
 		if !isStr {
 			return fmt.Errorf("value must be string, got %v", item.Value.Type())
 		}
@@ -74,8 +74,7 @@ func (doc Doc) encryptNode(entry *ast.MappingValueNode, password string) error {
 		switch key {
 		case "encrypted", "plain":
 		case "encrypt":
-			value, _ := io.ReadAll(item.Value)
-			plain := crypto.NewPlainMessage(value)
+			plain := crypto.NewPlainMessage([]byte(valueNode.Value))
 			encBin, err := crypto.EncryptMessageWithPassword(plain, []byte(password))
 			if err != nil {
 				return fmt.Errorf("encrypt field: %v", err)
