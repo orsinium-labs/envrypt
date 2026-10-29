@@ -3,6 +3,7 @@ package src
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -25,7 +26,7 @@ func (cmd Decrypt) Command() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&cmd.input, "input", "i", "envrypt.yaml", "path to the YAML file")
-	c.Flags().StringVarP(&cmd.output, "output", "o", ".env", "path to the YAML file")
+	c.Flags().StringVarP(&cmd.output, "output", "o", ".env", "path to the output .env file")
 	c.Flags().StringVarP(&cmd.password, "password", "p", "", "password to use")
 	must(c.MarkFlagRequired("password"))
 	return c
@@ -41,19 +42,29 @@ func (cmd Decrypt) run() error {
 		return fmt.Errorf("encrypt %s: %v", cmd.input, err)
 	}
 
-	out, err := os.Create(cmd.output)
-	if err != nil {
-		return fmt.Errorf("open %s: %v", cmd.output, err)
+	var out io.WriteCloser = os.Stdout
+	if cmd.output != "-" {
+		out, err = os.Create(cmd.output)
+		if err != nil {
+			return fmt.Errorf("open %s: %v", cmd.output, err)
+		}
+		defer func() {
+			_ = out.Close()
+		}()
 	}
-	defer func() {
-		_ = out.Close()
-	}()
+
 	for _, envVar := range vars {
 		if envVar.Comment != "" {
-			fmt.Fprintln(out, envVar.Comment)
+			_, err = fmt.Fprintln(out, envVar.Comment)
+			if err != nil {
+				return fmt.Errorf("write into %s: %v", cmd.output, err)
+			}
 		}
 		val, _ := json.Marshal(envVar.Value)
-		fmt.Fprintf(out, "export %s=%s\n", envVar.Key, string(val))
+		_, err = fmt.Fprintf(out, "export %s=%s\n", envVar.Key, string(val))
+		if err != nil {
+			return fmt.Errorf("write into %s: %v", cmd.output, err)
+		}
 	}
 
 	return nil

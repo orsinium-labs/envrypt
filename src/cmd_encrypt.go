@@ -40,6 +40,6 @@ func (cmd Encrypt) run() error {
 	if err != nil {
 		return fmt.Errorf("save %s: %v", cmd.input, err)
 	}
-	fmt.Fprintln(cmd.cfg.Stdout, "✅ encrypted")
+	_, _ = fmt.Fprintln(cmd.cfg.Stdout, "✅ encrypted")
 	return nil
 }
